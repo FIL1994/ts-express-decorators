@@ -2,6 +2,25 @@ import "reflect-metadata";
 import { AppRouter } from "../../AppRouter";
 import { Method } from "./Method";
 import { MetadataKey } from "./MetadataKey";
+import { RequestHandler, NextFunction, Response, Request } from "express";
+
+function bodyValidators(keys: string): RequestHandler {
+  return function(req: Request, res: Response, next: NextFunction) {
+    if (!req.body) {
+      res.status(422).send("Invalid request");
+      return;
+    }
+
+    for (let key of keys) {
+      if (!req.body[key]) {
+        res.status(422).send(`Missing property: ${key}`);
+        return;
+      }
+    }
+
+    next();
+  };
+}
 
 export function controller(routePrefix: string) {
   const router = AppRouter.getInstance();
@@ -15,12 +34,22 @@ export function controller(routePrefix: string) {
         target.prototype,
         key
       );
-      const middlwares =
+      const middlewares =
         Reflect.getMetadata(MetadataKey.Middleware, target.prototype, key) ||
         [];
 
+      const requiredBodyProps =
+        Reflect.getMetadata(MetadataKey.Validator, target.prototype, key) || [];
+
+      const validator = bodyValidators(requiredBodyProps);
+
       if (path) {
-        router[method](`${routePrefix}${path}`, ...middlwares, routeHandler);
+        router[method](
+          `${routePrefix}${path}`,
+          ...middlewares,
+          validator,
+          routeHandler
+        );
       }
     }
   };
